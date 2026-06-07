@@ -1,0 +1,9 @@
+# 组合镜像构建上下文（deploy/）瘦身：只需 bin/ 与 .stage/<svc> 进上下文。
+**/.git
+README.md
+docker-compose.yml
+build-release.sh
+versions.yml
+*.env
+*.log
+.DS_Store

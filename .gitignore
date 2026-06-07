@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS / 编辑器
+.DS_Store
+.idea/
+.vscode/
+
+# 环境
+.env
+.env.*
+!.env.example
+deploy/*.env
+
+# 组合镜像构建暂存（build-release.sh 克隆各仓到此，不入库）
+deploy/.stage/

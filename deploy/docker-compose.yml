@@ -1,0 +1,108 @@
+# ============================================================================
+# Vortex 顶层编排：同一个组合镜像 vortex:<tag>，每个服务起一个容器（主部署形态）。
+#
+# 镜像由 deploy/build-release.sh 构建。每容器只是同一镜像 + 不同 command（vortexctl <svc>），
+# 各自端口/卷/健康检查 → 崩溃隔离、独立重启（qmt 实盘与 backtest 重算彻底分开）。
+#
+# 启动：docker compose -f deploy/docker-compose.yml up -d
+# 默认只绑宿主机回环（仅本机可访问）；对外暴露需先配 token，再把 *_BIND_ADDR 设为 0.0.0.0。
+# ============================================================================
+x-img: &img ${VORTEX_IMAGE:-vortex:latest}
+
+services:
+  vortex-data:
+    image: *img
+    command: ["vortexctl", "data"]
+    container_name: vortex-data
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      VORTEX_WORKSPACE: /workspace
+      VORTEX_DATA_HOST: 0.0.0.0
+      VORTEX_DATA_PORT: 8765
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
+      VORTEX_DATA_DASHBOARD_TOKEN: ${VORTEX_DATA_DASHBOARD_TOKEN:-}
+    ports:
+      - "${VORTEX_DATA_BIND_ADDR:-127.0.0.1}:${VORTEX_DATA_PUBLIC_PORT:-8765}:8765"
+    volumes:
+      - vortex-workspace:/workspace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=3).read()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  vortex-qmt:
+    image: *img
+    command: ["vortexctl", "qmt"]
+    container_name: vortex-qmt
+    env_file:
+      - ${VORTEX_QMT_ENV:-./qmt.env}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      VORTEX_STATE: /state
+      VORTEX_QMT_STATE_DIR: /state
+      VORTEX_QMT_HOST: 0.0.0.0
+      VORTEX_QMT_PORT: 8810
+      QMT_BRIDGE_BASE_URL: ${QMT_BRIDGE_BASE_URL:-http://host.docker.internal:8000}
+    ports:
+      - "${VORTEX_QMT_BIND_ADDR:-127.0.0.1}:${VORTEX_QMT_PUBLIC_PORT:-8810}:8810"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - vortex-qmt-state:/state
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8810/health', timeout=3).read()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  vortex-backtest:
+    image: *img
+    command: ["vortexctl", "backtest"]
+    container_name: vortex-backtest
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      VORTEX_STATE: /state
+      VORTEX_BACKTEST_STATE_DIR: /state
+      VORTEX_DATA_WORKSPACE: /workspace
+      VORTEX_BACKTEST_HOST: 0.0.0.0
+      VORTEX_BACKTEST_PORT: 8767
+    ports:
+      - "${VORTEX_BACKTEST_BIND_ADDR:-127.0.0.1}:${VORTEX_BACKTEST_PUBLIC_PORT:-8767}:8767"
+    volumes:
+      - vortex-workspace:/workspace:ro       # 消费 data 导出的数据，只读
+      - vortex-backtest-state:/state
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/health', timeout=3).read()\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # 预留：trader 仓有代码并写进 versions.yml 后，去掉 profiles 即纳入。
+  vortex-trader:
+    image: *img
+    command: ["vortexctl", "trader"]
+    container_name: vortex-trader
+    profiles: ["trader"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      VORTEX_STATE: /state
+      VORTEX_TRADER_HOST: 0.0.0.0
+      VORTEX_TRADER_PORT: 8820
+    ports:
+      - "${VORTEX_TRADER_BIND_ADDR:-127.0.0.1}:${VORTEX_TRADER_PUBLIC_PORT:-8820}:8820"
+    volumes:
+      - vortex-trader-state:/state
+    restart: unless-stopped
+
+volumes:
+  vortex-workspace:
+  vortex-qmt-state:
+  vortex-backtest-state:
+  vortex-trader-state:

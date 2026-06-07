@@ -1,0 +1,36 @@
+# ============================================================================
+# vortex 统一基础镜像依赖清单（单一真值 / single source of truth）
+# ----------------------------------------------------------------------------
+# 这是 vortex-base 镜像里预装的全部「共用第三方库」。下游各仓库（vortex_data /
+# vortex_qmt / vortex_backtest）的应用镜像 FROM vortex-base 后，只叠加自己的代码，
+# 用 `pip install --no-deps .` 即可——依赖不再各自重复下载。
+#
+# 取版本下限的规则：三仓库对同一个库声明不同下限时，取「最高下限」，保证谁都满足。
+# 改依赖只改这里；改完用 scripts/build-base-image.sh base 重建镜像，
+# 并用 scripts/sync-requirements.py 校验是否仍覆盖三仓库的声明。
+#
+# 说明：base 不含 backtest 的 crosscheck 测试专用依赖 empyrical-reloaded / pytz（仅单测对拍用、
+# 缺失自动跳过，见 sync-requirements.py 豁免名单）。qlib/backtrader 已不在计划内、三仓也不再声明，
+# 故不在此列。镜像保持跨架构（amd64/arm64 都能构建），无任何仅单架构的 wheel。
+# ============================================================================
+
+# ---- 数据 / 数值 / 存储（vortex_data，backtest 也用 pandas/pyarrow）----
+duckdb>=1.0          # vortex_data：本地列式查询引擎
+numpy>=1.24          # vortex_data：数值底座（pandas 依赖）
+pandas>=2.2          # data(>=2.0) / qmt(>=2.0) / backtest(>=2.2) → 取 2.2
+pyarrow>=16          # data(>=14) / backtest(>=16) → 取 16
+pyyaml>=6.0.3        # vortex_data：配置解析
+tushare>=1.4         # vortex_data：行情数据源（纯 Python）
+
+# ---- Web 服务栈（vortex_qmt、vortex_backtest）----
+fastapi>=0.128.0     # qmt(>=0.110) / backtest(>=0.128) → 取 0.128
+uvicorn[standard]>=0.30   # qmt / backtest：ASGI server（standard 含 uvloop/httptools/websockets/watchfiles）
+pydantic>=2.7        # qmt / backtest：数据模型
+
+# ---- 测试 / HTTP 客户端（三仓库 dev/test 共用）----
+httpx>=0.27          # qmt / backtest：dev 测试客户端
+pytest>=8.0          # data / qmt / backtest：测试框架
+
+# ---- 构建后端（放进基础镜像，避免应用层构建时临时联网下载）----
+hatchling            # data / qmt 的 build-backend
+setuptools>=68       # backtest 的 build-backend

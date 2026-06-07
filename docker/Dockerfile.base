@@ -1,0 +1,36 @@
+# ============================================================================
+# vortex 统一基础镜像（vortex-base）—— 全家共用的第三方依赖底座。
+# ----------------------------------------------------------------------------
+# 设计目标：依赖只在「构建本镜像时」下载这一次，冻结进镜像层。下游各仓库
+# （vortex_data / vortex_qmt / vortex_backtest）的应用镜像 FROM 本镜像，只叠加
+# 代码（pip install --no-deps .），改代码秒级重建、零重下依赖。
+#
+# Python 版本：3.12（三仓库 requires-python 均满足 >=3.11；backtest 原本就跑在
+# python:3.12-slim 上，核心依赖已在 3.12 实测）。
+#
+# 离线友好：BASE_FROM 默认官方 python:3.12-slim；当 Docker Hub 不可达时，
+# scripts/build-base-image.sh 会自动改用「本地已有、含 Python 的镜像」作底座，
+# 从而完全不依赖 Hub。
+#
+# requirements-base.txt 是依赖的单一真值；改依赖请改它，再重建本镜像。
+# 运行期依赖均为预编译 wheel，无需编译工具链，故不装 build-essential（也免去 apt 联网）。
+# ============================================================================
+ARG BASE_FROM=python:3.12-slim
+FROM ${BASE_FROM}
+
+LABEL org.opencontainers.image.title="vortex-base" \
+      org.opencontainers.image.description="Shared third-party dependency base image for all vortex services" \
+      org.opencontainers.image.source="https://github.com/zyukyunman/vortex_common"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TZ=Asia/Shanghai
+
+COPY requirements-base.txt /tmp/requirements-base.txt
+
+# 依赖只在构建本镜像时下载这一次（PyPI）；之后应用镜像 FROM 本镜像，不再触碰依赖。
+# 末尾 import 自检的清单须与 requirements-base.txt 保持一致（仅 pyyaml→yaml 等少数名字不同）。
+RUN pip install --no-cache-dir -r /tmp/requirements-base.txt \
+    && python -c "import duckdb, numpy, pandas, pyarrow, yaml, tushare, fastapi, uvicorn, pydantic, httpx, pytest, hatchling, setuptools; print('vortex-base deps OK')"
