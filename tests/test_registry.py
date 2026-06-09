@@ -45,3 +45,46 @@ def test_rejects_unsorted_ports(tmp_path):
     )
     with pytest.raises(RegistryError, match="升序|sorted"):
         load_registry(p)
+
+
+def test_rejects_malformed_top_level(tmp_path):
+    p = tmp_path / "r.yml"
+    p.write_text("just a string, not a mapping\n", encoding="utf-8")
+    with pytest.raises(RegistryError):
+        load_registry(p)
+
+
+def test_rejects_missing_keys(tmp_path):
+    p = tmp_path / "r.yml"
+    p.write_text("services: []\n", encoding="utf-8")   # 缺 common
+    with pytest.raises(RegistryError):
+        load_registry(p)
+
+
+def test_rejects_duplicate_service_names(tmp_path):
+    p = tmp_path / "r.yml"
+    p.write_text(
+        "common: {tz: X, default_bind_addr: '127.0.0.1', network: n, "
+        "image: {base: b, app: a}, workspace_host_root: w, state_host_root: s, "
+        "container: {workspace: /workspace, state: /state}}\n"
+        "services:\n"
+        "  - {name: dup, port: 8765, role: r, health: /h, repo: u, ref: main}\n"
+        "  - {name: dup, port: 8766, role: r, health: /h, repo: u, ref: main}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RegistryError, match="重复服务名|duplicate name"):
+        load_registry(p)
+
+
+def test_rejects_out_of_range_port(tmp_path):
+    p = tmp_path / "r.yml"
+    p.write_text(
+        "common: {tz: X, default_bind_addr: '127.0.0.1', network: n, "
+        "image: {base: b, app: a}, workspace_host_root: w, state_host_root: s, "
+        "container: {workspace: /workspace, state: /state}}\n"
+        "services:\n"
+        "  - {name: a, port: 99999, role: r, health: /h, repo: u, ref: main}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RegistryError, match="越界|out of range"):
+        load_registry(p)

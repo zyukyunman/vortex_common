@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -49,36 +48,55 @@ class Registry:
 
 
 def load_registry(path: Path) -> Registry:
-    data: dict[str, Any] = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
-    c = data["common"]
-    common = Common(
-        tz=c["tz"],
-        default_bind_addr=str(c["default_bind_addr"]),
-        network=c["network"],
-        image_base=c["image"]["base"],
-        image_app=c["image"]["app"],
-        workspace_host_root=c["workspace_host_root"],
-        state_host_root=c["state_host_root"],
-        container_workspace=c["container"]["workspace"],
-        container_state=c["container"]["state"],
-    )
-    services = tuple(
-        Service(
-            name=s["name"],
-            port=int(s["port"]),
-            role=s["role"],
-            health=s["health"],
-            repo=s["repo"],
-            ref=(s.get("ref") or None),
-            submodules=bool(s.get("submodules", False)),
+    try:
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise RegistryError(f"registry.yml 解析失败 (YAML error): {e}") from e
+    if not isinstance(data, dict):
+        raise RegistryError("registry.yml 顶层必须是映射 (mapping)，含 common 与 services")
+    try:
+        c = data["common"]
+        common = Common(
+            tz=c["tz"],
+            default_bind_addr=str(c["default_bind_addr"]),
+            network=c["network"],
+            image_base=c["image"]["base"],
+            image_app=c["image"]["app"],
+            workspace_host_root=c["workspace_host_root"],
+            state_host_root=c["state_host_root"],
+            container_workspace=c["container"]["workspace"],
+            container_state=c["container"]["state"],
         )
-        for s in data["services"]
-    )
+        services = tuple(
+            Service(
+                name=s["name"],
+                port=_parse_port(s["port"], s.get("name", "?")),
+                role=s["role"],
+                health=s["health"],
+                repo=s["repo"],
+                ref=(s.get("ref") or None),
+                submodules=bool(s.get("submodules", False)),
+            )
+            for s in data["services"]
+        )
+    except (KeyError, TypeError) as e:
+        raise RegistryError(f"registry.yml 结构缺失或类型错误 (missing/invalid key): {e}") from e
     _validate(services)
     return Registry(common=common, services=services)
 
 
+def _parse_port(value: object, svc_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RegistryError(f"服务 {svc_name} 端口须为整数 (port must be int): {value!r}")
+    if not (1 <= value <= 65535):
+        raise RegistryError(f"服务 {svc_name} 端口越界 1..65535 (out of range): {value}")
+    return value
+
+
 def _validate(services: tuple[Service, ...]) -> None:
+    names = [s.name for s in services]
+    if len(set(names)) != len(names):
+        raise RegistryError(f"重复服务名 (duplicate names): {names}")
     ports = [s.port for s in services]
     if len(set(ports)) != len(ports):
         raise RegistryError(f"重复端口 (duplicate ports): {ports}")
