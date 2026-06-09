@@ -12,7 +12,7 @@ from .generate import (
 
 # .env / .env.example 中禁止出现的键（这些归 common 公共层）
 _FORBIDDEN_RE = re.compile(
-    r"^\s*(VORTEX_\w*_PORT|VORTEX_\w*_PUBLIC_PORT|VORTEX_\w*_BIND_ADDR|TZ"
+    r"^\s*(?:export\s+)?(VORTEX_\w*_PORT|VORTEX_\w*_PUBLIC_PORT|VORTEX_\w*_BIND_ADDR|TZ"
     r"|VORTEX_\w*_HOST|VORTEX_\w*MOUNT|VORTEX_\w*HOST_ROOT|VORTEX_WORKSPACE|VORTEX_STATE)\s*="
 )
 
