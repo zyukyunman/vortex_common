@@ -1,0 +1,41 @@
+# Vortex 配置单一真值源。手改这里 → `vortex cfg gen` 重生全部派生物。
+# 容器内路径固定（ADR-002）；宿主机根为相对 HOME 约定，由 `vortex run` 运行时解析。
+common:
+  tz: Asia/Shanghai
+  default_bind_addr: "127.0.0.1"
+  network: vortex-net
+  image:
+    base: vortex-base
+    app: vortex
+  workspace_host_root: "${HOME}/vortex/workspace"
+  state_host_root: "${HOME}/vortex/state"
+  container:
+    workspace: /workspace
+    state: /state
+
+services:
+  - name: vortex_data
+    port: 8765
+    role: 数据底座
+    health: /api/health
+    repo: https://github.com/zyukyunman/vortex_data.git
+    ref: main
+  - name: vortex_backtest
+    port: 8766
+    role: 回测
+    health: /health
+    repo: https://github.com/zyukyunman/vortex_backtest.git
+    ref: main
+  - name: vortex_qmt
+    port: 8767
+    role: 实盘
+    health: /health
+    repo: https://github.com/zyukyunman/vortex_qmt.git
+    ref: main
+    submodules: true
+  - name: vortex_trader
+    port: 8768
+    role: 预留
+    health: /health
+    repo: https://github.com/zyukyunman/vortex_trader.git
+    ref: null
