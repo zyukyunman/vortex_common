@@ -51,3 +51,22 @@ def test_versions_empty_ref_is_bare_not_quoted():
     assert re.search(r"name: vortex_trader[\s\S]*?\n\s*ref:\s*\n", out + "\n")
     assert 'ref: ""' not in out
     assert "ref: ''" not in out
+
+
+from vortextool.generate import render_services_md, render_architecture_md
+
+
+def test_services_md_table_has_all_services():
+    md = render_services_md(REG)
+    assert md.splitlines()[0].startswith("# ")
+    for name, port in [("vortex_data", "8765"), ("vortex_backtest", "8766"),
+                       ("vortex_qmt", "8767"), ("vortex_trader", "8768")]:
+        assert name in md and port in md
+    assert "数据底座" in md and "预留" in md
+
+
+def test_architecture_md_is_mermaid_with_nodes():
+    md = render_architecture_md(REG)
+    assert "```mermaid" in md
+    assert "vortex-data" in md and ":8765" in md
+    assert "vortex-trader" in md and ":8768" in md

@@ -37,3 +37,35 @@ def render_versions(reg: Registry) -> str:
         if s.submodules:
             lines.append("    submodules: true")
     return "\n".join(lines) + "\n"
+
+
+def render_services_md(reg: Registry) -> str:
+    lines = [
+        "# 服务总表（生成）",
+        "",
+        HEADER,
+        "",
+        "| 服务 | 端口（内外一致） | 角色 | 健康检查 | 仓库 |",
+        "|------|------|------|---------|------|",
+    ]
+    for s in reg.services:
+        lines.append(f"| {s.name} | {s.port} | {s.role} | `{s.health}` | {s.repo} |")
+    return "\n".join(lines) + "\n"
+
+
+def render_architecture_md(reg: Registry) -> str:
+    nodes = "\n".join(
+        f'    {s.name.replace("vortex_", "")}["{s.name.replace("_", "-")} :{s.port}<br/>{s.role}"]'
+        for s in reg.services
+    )
+    return (
+        "# 系统拓扑（生成）\n\n"
+        f"{HEADER}\n\n"
+        "```mermaid\n"
+        "graph TB\n"
+        f'  subgraph host["宿主机 · {reg.common.network}"]\n'
+        f"{nodes}\n"
+        "  end\n"
+        '  qmt -- QMTClient --> win["Windows · qmt-bridge :8000"]\n'
+        "```\n"
+    )
