@@ -21,3 +21,19 @@ def render_env(reg: Registry) -> str:
         lines.append(f"VORTEX_{up}_PORT={s.port}")
         lines.append(f"VORTEX_{up}_BIND_ADDR={c.default_bind_addr}")
     return "\n".join(lines) + "\n"
+
+
+def render_versions(reg: Registry) -> str:
+    lines = [
+        HEADER,
+        "# pull-code.sh / build-release.sh 用 awk 解析本文件，字段固定 name/repo/ref/submodules。",
+        "services:",
+    ]
+    for s in reg.services:
+        lines.append(f"  - name: {s.name}")
+        lines.append(f"    repo: {s.repo}")
+        # 空 ref 投影为裸空（不带引号）：预留服务，构建/拉取时跳过。
+        lines.append(f"    ref: {s.ref}" if s.ref else "    ref:")
+        if s.submodules:
+            lines.append("    submodules: true")
+    return "\n".join(lines) + "\n"
