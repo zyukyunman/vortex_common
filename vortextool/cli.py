@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .registry import load_registry
+from .registry import load_registry, RegistryError
 from .generate import (
     render_env, render_versions, render_services_md, render_architecture_md,
 )
@@ -68,13 +68,16 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="group", required=True)
     cfg = sub.add_parser("cfg", help="配置组")
     cfg_sub = cfg.add_subparsers(dest="action", required=True)
-    for name in ("gen", "check", "list", "ports"):
-        cfg_sub.add_parser(name)
+    cfg_sub.add_parser("gen").set_defaults(func=_gen)
+    cfg_sub.add_parser("check").set_defaults(func=_check)
+    cfg_sub.add_parser("list").set_defaults(func=_list)
+    cfg_sub.add_parser("ports").set_defaults(func=_ports)
     args = parser.parse_args(argv)
-    if args.group == "cfg":
-        return {"gen": _gen, "check": _check, "list": _list, "ports": _ports}[args.action]()
-    parser.error(f"未知组 {args.group}")
-    return 2
+    try:
+        return args.func()
+    except RegistryError as e:
+        print(f"✗ registry.yml 无效 (invalid): {e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

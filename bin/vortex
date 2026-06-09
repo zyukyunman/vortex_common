@@ -2,5 +2,12 @@
 # vortex —— 宿主机配置/镜像/运行总入口（区别于容器内 vortexctl）。
 # 本阶段实现 cfg 组（gen/check/list/ports）。image/run 为后续 Phase。
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")/.." && pwd)"   # vortex_common 仓根
+# 解析真实脚本路径（支持 symlink 上 PATH）。
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+HERE="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"   # vortex_common 仓根
 exec uv --project "$HERE" run python -m vortextool.cli "$@"
