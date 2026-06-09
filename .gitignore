@@ -10,11 +10,10 @@ venv/
 .idea/
 .vscode/
 
-# 环境
+# 环境（common 自己不存配置；各仓配置在各仓 <仓>/.env）
 .env
 .env.*
-!.env.example
-deploy/*.env
 
-# 组合镜像构建暂存（build-release.sh 克隆各仓到此，不入库）
+# 组合部署：pull-code 把各仓拉到 deploy/repos/（含各仓 .env），构建暂存到 deploy/.stage/——都不入库
+deploy/repos/
 deploy/.stage/

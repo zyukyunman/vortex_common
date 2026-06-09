@@ -1,8 +1,8 @@
 # ============================================================================
 # Vortex 组合镜像的各仓版本清单（每仓库各自 tag）。
 #
-# 发版 = 改下面某个服务的 ref（tag/commit/分支）→ 提交本文件。该提交即这套组合的
-# 发布点。然后 deploy/build-release.sh 会按各 ref 浅克隆代码、构建出 vortex:<tag> 镜像。
+# 发版 = 改下面某个服务的 ref（tag/commit/分支）→ 提交本文件。该提交即这套组合的发布点。
+# 然后 deploy/pull-code.sh 按各 ref 把各仓拉到 deploy/repos/，deploy/build-release.sh 据此造镜像。
 #
 # 字段：
 #   name       服务名（对应 /app/services/<name> 与 vortexctl 的子命令）

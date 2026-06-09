@@ -1,30 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================================
-# 构建 Vortex 组合镜像 vortex:<tag>：按 versions.yml 钉定的各仓 tag 拉代码 → 造一个镜像。
+# 构建 Vortex 组合镜像 vortex:<tag>：用 deploy/repos/<svc> 里的代码造一个镜像。
 #
-# 发版流程：改 versions.yml 里某服务的 ref → 提交 → 跑本脚本 → 得到新镜像。
+# 前置：先跑 deploy/pull-code.sh 把各仓拉到 deploy/repos/<svc>（并填好各仓 .env）。
+# 本脚本只负责「造镜像」：把 repos/<svc> 的代码装进镜像（--no-deps）。
+#   关键：各仓 .env 不进镜像（配置运行时由 compose env_file 注入，改配置不必重建镜像）。
 #
 # 用法：
-#   deploy/build-release.sh                 # 按 versions.yml 构建 vortex:latest（发版流程）
-#   deploy/build-release.sh --tag=2026.06.07  # 额外打一个版本 tag
-#   deploy/build-release.sh --no-cache
-#   deploy/build-release.sh --push          # 构建后推送（需 docker login；可配 REGISTRY=）
-#   deploy/build-release.sh --keep-stage    # 保留 .stage/ 便于排查
+#   deploy/build-release.sh                 # 用 deploy/repos/* 构建 vortex:latest
+#   deploy/build-release.sh --tag=2026.06.07  # 额外打版本 tag
+#   deploy/build-release.sh --no-cache / --push / --keep-stage
 #
-# 调试（本地源覆盖，不走 git）：把某服务用本地工作区代码（含未提交改动）打进镜像 ——
-#   VORTEX_DATA_SRC=../vortex_data deploy/build-release.sh --tag=dev          # 仅 data 用本地
-#   VORTEX_DATA_SRC=../vortex_data VORTEX_QMT_SRC=../vortex_qmt \
-#   VORTEX_BACKTEST_SRC=../vortex_backtest deploy/build-release.sh --tag=dev  # 全栈用本地
-#   未设 *_SRC 的服务仍按 versions.yml 的 tag 从 git 拉。
-#
+# 调试覆盖：VORTEX_<SVC>_SRC=/path 用别的本地目录替代 repos/<svc>（SVC=DATA|QMT|BACKTEST|TRADER）
 # 环境变量：BASE_IMAGE(默认 vortex-base:latest) IMAGE(默认 vortex:latest) REGISTRY
-#           VORTEX_<SVC>_SRC（调试本地源，SVC=DATA|QMT|BACKTEST|TRADER）
-# 私有仓由本机 git 凭据/SSH 克隆；凭据不进镜像（代码以 COPY .stage 进镜像）。
 # ============================================================================
 set -euo pipefail
-cd "$(dirname "$0")"                       # 切到 deploy/（构建上下文）
+cd "$(dirname "$0")"                       # deploy/
 
 MANIFEST="versions.yml"
+REPOS="repos"
 STAGE=".stage"
 BASE_IMAGE="${BASE_IMAGE:-vortex-base:latest}"
 IMAGE="${IMAGE:-vortex:latest}"
@@ -41,84 +35,62 @@ for arg in "$@"; do case "$arg" in
 esac; done
 
 command -v docker >/dev/null || { echo "未找到 docker" >&2; exit 1; }
-command -v git    >/dev/null || { echo "未找到 git" >&2; exit 1; }
-[ -f "$MANIFEST" ] || { echo "缺少 $MANIFEST" >&2; exit 1; }
-if ! docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; then
-  echo "!! 基础镜像 $BASE_IMAGE 不存在。请先构建：(cd .. && scripts/build-base-image.sh)" >&2
-  exit 1
-fi
+[ -f "$MANIFEST" ] || { echo "缺 $MANIFEST" >&2; exit 1; }
+docker image inspect "$BASE_IMAGE" >/dev/null 2>&1 || {
+  echo "!! 基础镜像 $BASE_IMAGE 不存在。请先：(cd .. && scripts/build-base-image.sh)" >&2; exit 1; }
 
-# ---- 解析 versions.yml（不依赖 PyYAML，按固定结构用 awk）→ TSV: name repo ref submodules ----
 parse_manifest() {
   awk '
-    function flush(){ if(name!=""){ printf "%s\t%s\t%s\t%s\n", name, repo, ref, subm } name="";repo="";ref="";subm="" }
-    /^[[:space:]]*#/        { next }
-    /^[[:space:]]*-[[:space:]]*name:/ { flush(); name=$0; sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/,"",name); gsub(/[[:space:]\r]/,"",name); next }
-    /^[[:space:]]*repo:/    { repo=$0; sub(/^[[:space:]]*repo:[[:space:]]*/,"",repo); gsub(/[[:space:]\r]/,"",repo); next }
-    /^[[:space:]]*ref:/     { ref=$0;  sub(/^[[:space:]]*ref:[[:space:]]*/,"",ref);   gsub(/[[:space:]\r]/,"",ref);  next }
-    /^[[:space:]]*submodules:/ { subm=$0; sub(/^[[:space:]]*submodules:[[:space:]]*/,"",subm); gsub(/[[:space:]\r]/,"",subm); next }
+    function flush(){ if(name!=""){ print name } name="" }
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*-[[:space:]]*name:/ { flush(); name=$0; sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/,"",name); gsub(/[[:space:]\r]/,"",name) }
     END{ flush() }
   ' "$MANIFEST"
 }
 
-ref_argname() {  # vortex_data -> VORTEX_DATA_REF
-  echo "VORTEX_$(echo "${1#vortex_}" | tr '[:lower:]' '[:upper:]')_REF"
-}
-
-# 调试本地源覆盖：VORTEX_<SVC>_SRC 指本地路径时返回该路径，否则空。
-src_for() {
+src_for() {   # vortex_data -> $VORTEX_DATA_SRC 或 repos/vortex_data
   local up; up="$(echo "${1#vortex_}" | tr '[:lower:]' '[:upper:]')"
-  local v="VORTEX_${up}_SRC"; echo "${!v:-}"
+  local v="VORTEX_${up}_SRC"
+  echo "${!v:-${REPOS}/$1}"
 }
+ref_argname() { echo "VORTEX_$(echo "${1#vortex_}" | tr '[:lower:]' '[:upper:]')_REF"; }
 
-clone_one() {   # name repo ref submodules
-  local name="$1" repo="$2" ref="$3" subm="$4" dst="${STAGE}/$1"
-  rm -rf "$dst"; mkdir -p "$dst"
-  local src; src="$(src_for "$name")"
-  if [ -n "$src" ]; then     # 调试：用本地工作区代码（含未提交改动），不走 git
-    echo ">> ${name}: 用本地源 ${src}（调试，不走 git）"
-    [ -d "$src" ] || { echo "   本地源目录不存在: $src" >&2; exit 1; }
-    tar -C "$src" --exclude=.git --exclude=.venv --exclude=venv --exclude=workspace \
-        --exclude=.stage --exclude='__pycache__' --exclude='*.egg-info' \
-        --exclude=.pytest_cache --exclude=.DS_Store -cf - . | tar -C "$dst" -xf -
-    return 0
-  fi
-  if [ -z "$ref" ]; then
-    echo ">> ${name}: ref 为空 → 预留占位（不纳入本次镜像）"
-    : > "${dst}/.gitkeep"
-    return 0
-  fi
-  echo ">> ${name}: 克隆 ${repo} @ ${ref}"
-  if ! git clone --depth 1 --branch "$ref" "$repo" "$dst" 2>/dev/null; then
-    echo "   (浅克隆指定 ref 失败，回退全克隆再 checkout)"
-    rm -rf "$dst"; git clone "$repo" "$dst"; git -C "$dst" checkout "$ref"
-  fi
-  if [ "$subm" = "true" ]; then
-    echo "   检出子模块 ..."
-    git -C "$dst" submodule update --init --recursive
-  fi
-  rm -rf "${dst}/.git"      # 不把 .git 历史塞进构建上下文/镜像
-}
-
-echo ">> 解析 ${MANIFEST}"
-BUILD_ARGS=( --build-arg "BASE_IMAGE=${BASE_IMAGE}" )
-SUMMARY=""
-while IFS=$'\t' read -r name repo ref subm; do
-  [ -n "$name" ] || continue
-  clone_one "$name" "$repo" "$ref" "$subm"
+# 暂存某仓代码到 .stage/<name>，排除 .env（不进镜像）/.git/.venv 等。返回 ref 标签。
+stage_one() {   # name -> echo label
+  local name="$1" src dst="${STAGE}/$1" label
   src="$(src_for "$name")"
-  if [ -n "$src" ]; then arg="local"; disp="local:${src}";
-  elif [ -z "$ref" ]; then arg="none"; disp="<预留>";
-  else arg="$ref"; disp="$ref"; fi
-  BUILD_ARGS+=( --build-arg "$(ref_argname "$name")=${arg}" )
-  SUMMARY+="   ${name}: ${disp}\n"
+  rm -rf "$dst"; mkdir -p "$dst"
+  if [ -f "${src}/pyproject.toml" ]; then
+    tar -C "$src" \
+        --exclude='.env' --exclude='.env.*' --exclude=.git --exclude=.venv --exclude=venv \
+        --exclude=workspace --exclude=state --exclude=.stage --exclude='__pycache__' \
+        --exclude='*.egg-info' --exclude=.pytest_cache --exclude=.DS_Store -cf - . | tar -C "$dst" -xf -
+    label="$(git -C "$src" rev-parse --short HEAD 2>/dev/null || echo local)"
+  else
+    : > "${dst}/.gitkeep"; label="none"
+  fi
+  echo "$label"
+}
+
+echo ">> 从 ${REPOS}/ 暂存各仓代码（排除 .env，不进镜像）"
+BUILD_ARGS=( --build-arg "BASE_IMAGE=${BASE_IMAGE}" )
+SUMMARY=""; MISSING=0
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  src="$(src_for "$name")"
+  if [ ! -e "${src}/pyproject.toml" ] && [ -d "${REPOS}" ] && [ ! -d "${src}" ]; then
+    # repos/<svc> 不存在且非预留：提示先 pull-code（trader 等预留 ref 为空时允许缺）
+    SUMMARY+="   ${name}: <缺，未 pull-code 或预留>\n"
+  fi
+  label="$(stage_one "$name")"
+  BUILD_ARGS+=( --build-arg "$(ref_argname "$name")=${label}" )
+  SUMMARY+="   ${name}: ${label}\n"
 done < <(parse_manifest)
 
-# 组装标签
 TAGS=( -t "${REGISTRY:+${REGISTRY}/}${IMAGE}" )
 [ -n "$EXTRA_TAG" ] && TAGS+=( -t "${REGISTRY:+${REGISTRY}/}${IMAGE%%:*}:${EXTRA_TAG}" )
 
-echo ">> 各仓版本："; printf "%b" "$SUMMARY"
+echo ">> 各仓版本（镜像 label）："; printf "%b" "$SUMMARY"
 echo ">> 构建 ${IMAGE}（FROM ${BASE_IMAGE}）"
 docker build $NO_CACHE "${BUILD_ARGS[@]}" -f Dockerfile "${TAGS[@]}" .
 
@@ -128,4 +100,4 @@ fi
 
 [ "$KEEP_STAGE" = 1 ] || rm -rf "$STAGE"
 docker image ls "${IMAGE%%:*}" --format '   {{.Repository}}:{{.Tag}}  {{.Size}}  ({{.CreatedSince}})' 2>/dev/null || true
-echo ">> 完成。运行：docker compose -f deploy/docker-compose.yml up -d  （单服务：docker run --rm -p 8765:8765 ${IMAGE} vortexctl data）"
+echo ">> 完成。启动：docker compose up -d vortex-data （数据）/ docker compose up -d （全栈）"

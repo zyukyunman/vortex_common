@@ -51,7 +51,7 @@ CMD ["vortex-<svc>", "serve"]      # 或本仓原有启动命令
 
 > **不必每仓再自带构建脚本。** 各仓旧的 `scripts/build-image.sh` 本就各不相同、且只是包了一层
 > `docker build`——`docker compose up -d --build` 已等价覆盖，删掉即可。发布用的**组合镜像**由 common 的
-> `deploy/build-release.sh` 统一制造（按 tag 拉各仓代码），与本仓脚本无关。前置 `vortex-base` 一次性建好：
+> `deploy/pull-code.sh`（拉各仓）+ `deploy/build-release.sh`（造镜像）统一制造，与本仓脚本无关。前置 `vortex-base` 一次性建好：
 > `(cd ../vortex_common && scripts/build-base-image.sh)`。
 
 **⑤ 构建 + 验证**：`docker compose up -d --build && docker compose ps`（各服务 healthy），跑 `pytest`。
@@ -102,13 +102,22 @@ exec vortex-backtest serve
 
 ## 5. 接入组合镜像（整合部署）
 
-各仓迁移完后，由 `vortex_common/deploy/` 统一打包发布。流程（owner 在 vortex_common 做）：
+**配置约定（标准做法，各仓基本无需改动）**：配置归各仓所有，在**仓根放 `.env.example`**
+（模板：URL/端口/风控等默认值填好、token 等密钥**留空**），并在本仓 `.gitignore` 里**保留忽略 `.env`**
+（真 `.env` 含密钥、不入库）。三仓现在本就是这样——确认 `.env.example` 在仓根、字段齐全即可。
+部署侧 `pull-code.sh` 拉仓后会**首次从 `.env.example` 拷出 `.env`** 供你填密钥；`.env` 被忽略，
+后续更新不覆盖你的编辑。
 
-1. 各仓打 tag → 写进 `deploy/versions.yml`（钉每仓 ref）。
-2. `deploy/build-release.sh` 按 tag 拉各仓代码 → 组合镜像 `vortex:<tag>`。
-3. `docker compose -f deploy/docker-compose.yml up -d` 起全部服务（每服务一容器）。
+**部署流程**（owner 在 `vortex_common/deploy/` 内做）：
 
-架构与细节见 [ADR-001](../adr/ADR-001-deployment-architecture.md) 与 [deploy/README](../../deploy/README.md)。
+1. 各仓确认 ref → 写进 `deploy/versions.yml`。
+2. `./pull-code.sh` 把各仓拉到 `deploy/repos/<svc>`（并首次从各仓 `.env.example` 种出 `.env`）。
+3. 编辑 `deploy/repos/<svc>/.env` 填密钥/凭证。
+4. `./build-release.sh` 造组合镜像 `vortex:<tag>`（各仓 `.env` 不进镜像）。
+5. `docker compose up -d`（在 `deploy/` 内）起全部服务。
+
+架构见 [ADR-001](../adr/ADR-001-deployment-architecture.md)；操作见
+[deploy/CONFIG-AND-RUN.zh.md](../../deploy/CONFIG-AND-RUN.zh.md) 与 [deploy/README](../../deploy/README.md)。
 
 ## 6. 本地调试（不走发版流程，不切路径）
 
@@ -117,7 +126,7 @@ exec vortex-backtest serve
 - **单服务（最常用）**：在本仓直接 `docker compose up -d --build`。compose 用本仓 `Dockerfile`
   构建本地工作区代码（含未提交改动）成 `vortex-<svc>:latest` 并跑起来——一条命令、无需任何脚本。
 - **全栈**：在 vortex_common 用本地源覆盖打整组合镜像：
-  `VORTEX_DATA_SRC=../vortex_data deploy/build-release.sh --tag=dev`（未设 `*_SRC` 的服务仍按 tag 从 git 拉）。
+  `VORTEX_DATA_SRC=../vortex_data deploy/build-release.sh --tag=dev`（其余服务用 `deploy/repos/<svc>`，先跑过 `pull-code.sh`）。
 
 ## 7. 维护与跨仓清理
 

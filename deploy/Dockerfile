@@ -1,8 +1,8 @@
 # ============================================================================
 # Vortex 组合镜像：一个镜像装下全部服务代码（各仓按 versions.yml 钉定的 tag）。
 #
-# 由 deploy/build-release.sh 构建：脚本先在宿主机把各仓浅克隆到 deploy/.stage/<svc>
-# （私有仓用你本机凭据，凭据不入镜像），再以 deploy/ 为上下文构建本文件。
+# 由 deploy/build-release.sh 构建：pull-code.sh 先把各仓拉到 deploy/repos/<svc>，build-release
+# 再把代码暂存到 deploy/.stage/<svc>（排除各仓 .env，配置不入镜像），以 deploy/ 为上下文构建本文件。
 #
 # 运行：见 deploy/docker-compose.yml（每服务一容器）。单服务：docker run vortex:<tag> vortexctl <svc>。
 # ============================================================================

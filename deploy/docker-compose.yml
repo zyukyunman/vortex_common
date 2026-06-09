@@ -1,11 +1,15 @@
 # ============================================================================
 # Vortex 顶层编排：同一个组合镜像 vortex:<tag>，每个服务起一个容器（主部署形态）。
 #
-# 镜像由 deploy/build-release.sh 构建。每容器只是同一镜像 + 不同 command（vortexctl <svc>），
-# 各自端口/卷/健康检查 → 崩溃隔离、独立重启（qmt 实盘与 backtest 重算彻底分开）。
+# 配置归各仓所有：每个服务的配置在它自己仓里 <仓>/.env（真名、含默认值+你填的密钥）。
+#   pull-code.sh 把各仓拉到 deploy/repos/<svc>；compose 用 env_file 把该仓 .env 运行时注入
+#   对应容器（改配置只需 up -d / restart，不重建镜像；.env 不进镜像）。
+# environment: 只放容器内固定不变量（端口/目录/host），覆盖 .env 同名项，保证内部接线不被改坏。
+# 主机侧映射（*_BIND_ADDR / *_PUBLIC_PORT）默认绑回环；要对外暴露在 up 时用 shell env 覆盖，如：
+#   VORTEX_DATA_BIND_ADDR=0.0.0.0 VORTEX_DATA_PUBLIC_PORT=8876 docker compose up -d vortex-data
 #
-# 启动：docker compose -f deploy/docker-compose.yml up -d
-# 默认只绑宿主机回环（仅本机可访问）；对外暴露需先配 token，再把 *_BIND_ADDR 设为 0.0.0.0。
+# 流程：deploy/pull-code.sh → 改 repos/<svc>/.env → deploy/build-release.sh → docker compose up -d
+# 详见 deploy/CONFIG-AND-RUN.zh.md。须在 deploy/ 目录内执行 docker compose。
 # ============================================================================
 x-img: &img ${VORTEX_IMAGE:-vortex:latest}
 
@@ -14,13 +18,12 @@ services:
     image: *img
     command: ["vortexctl", "data"]
     container_name: vortex-data
-    environment:
-      TZ: ${TZ:-Asia/Shanghai}
+    env_file:
+      - repos/vortex_data/.env               # 该仓自己的配置（TUSHARE_TOKEN/写 token/...）
+    environment:                             # 容器内固定不变量（覆盖 .env，保证内部接线）
       VORTEX_WORKSPACE: /workspace
       VORTEX_DATA_HOST: 0.0.0.0
       VORTEX_DATA_PORT: 8765
-      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
-      VORTEX_DATA_DASHBOARD_TOKEN: ${VORTEX_DATA_DASHBOARD_TOKEN:-}
     ports:
       - "${VORTEX_DATA_BIND_ADDR:-127.0.0.1}:${VORTEX_DATA_PUBLIC_PORT:-8765}:8765"
     volumes:
@@ -38,14 +41,11 @@ services:
     command: ["vortexctl", "qmt"]
     container_name: vortex-qmt
     env_file:
-      - ${VORTEX_QMT_ENV:-./qmt.env}
+      - repos/vortex_qmt/.env                # 该仓自己的实盘配置（token/桥接/风控），与 data 隔离
     environment:
-      TZ: ${TZ:-Asia/Shanghai}
-      VORTEX_STATE: /state
-      VORTEX_QMT_STATE_DIR: /state
+      VORTEX_STATE: /state                   # 标准名（ADR-002）
       VORTEX_QMT_HOST: 0.0.0.0
       VORTEX_QMT_PORT: 8810
-      QMT_BRIDGE_BASE_URL: ${QMT_BRIDGE_BASE_URL:-http://host.docker.internal:8000}
     ports:
       - "${VORTEX_QMT_BIND_ADDR:-127.0.0.1}:${VORTEX_QMT_PUBLIC_PORT:-8810}:8810"
     extra_hosts:
@@ -64,11 +64,11 @@ services:
     image: *img
     command: ["vortexctl", "backtest"]
     container_name: vortex-backtest
+    env_file:
+      - repos/vortex_backtest/.env           # 该仓自己的配置（写 token 等）
     environment:
-      TZ: ${TZ:-Asia/Shanghai}
-      VORTEX_STATE: /state
-      VORTEX_BACKTEST_STATE_DIR: /state
-      VORTEX_DATA_WORKSPACE: /workspace
+      VORTEX_WORKSPACE: /workspace           # 标准名（ADR-002）
+      VORTEX_STATE: /state                   # 标准名（ADR-002）
       VORTEX_BACKTEST_HOST: 0.0.0.0
       VORTEX_BACKTEST_PORT: 8767
     ports:
@@ -84,14 +84,15 @@ services:
       retries: 3
       start_period: 20s
 
-  # 预留：trader 仓有代码并写进 versions.yml 后，去掉 profiles 即纳入。
+  # 预留：trader 仓有代码并写进 versions.yml + pull-code 后，去掉 profiles 即纳入。
   vortex-trader:
     image: *img
     command: ["vortexctl", "trader"]
     container_name: vortex-trader
     profiles: ["trader"]
+    env_file:
+      - repos/vortex_trader/.env
     environment:
-      TZ: ${TZ:-Asia/Shanghai}
       VORTEX_STATE: /state
       VORTEX_TRADER_HOST: 0.0.0.0
       VORTEX_TRADER_PORT: 8820

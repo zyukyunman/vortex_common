@@ -50,9 +50,11 @@ common 提供统一启动器 `vortexctl <svc>`（前台跑单个服务），各�
    Docker（或 k8s）即进程监督者，单服务崩溃/重启互不影响（**qmt 实盘与 backtest 重算彻底隔离**）。
    裸 `docker run vortex:<tag>` 不带服务名时打印用法并列出已装入服务，引导你选服务或用 compose。
 
-3. **发布（每仓库各自 tag）**：`deploy/versions.yml` 钉每个仓库的 git ref；`deploy/build-release.sh`
-   读清单、按 ref 浅克隆各仓到暂存区、构建镜像并烙 ref label。**发版＝改 versions.yml 里某仓的 tag +
-   提交**（该提交即这套组合的发布点；可另给 vortex_common 打 `release-YYYY.MM.DD` tag）。
+3. **发布（每仓库各自 tag）**：`deploy/versions.yml` 钉每个仓库的 git ref；`deploy/pull-code.sh`
+   按 ref 把各仓拉到 `deploy/repos/<svc>`，并首次从各仓 `.env.example` 种出 `.env`（配置归各仓所有，
+   `.env` 被各仓 gitignore、含密钥不入库），`deploy/build-release.sh` 再用 `repos/` 的代码构建镜像并烙
+   ref label（**各仓 `.env` 不进镜像**）。
+   **发版＝改 versions.yml 里某仓的 tag + 提交**（该提交即这套组合的发布点）。
 
 4. **非 root + 单机优先**：镜像内建非 root 用户 `vortex`(uid 1000)，数据目录预置属主；配合**命名卷**
    （Docker 按镜像属主初始化，规避 bind-mount 的 uid 错配）默认非 root 运行。单机 Docker/Compose 为
@@ -118,7 +120,7 @@ common 提供统一启动器 `vortexctl <svc>`（前台跑单个服务），各�
 **更难 / 需注意：**
 - 端口冲突必须解决：**规范内部端口** data `8765`、qmt `8810`、backtest `8767`（部署期 env 覆盖其默认 8765）、trader `8820`(预留)。
 - 各仓需新增 `deploy/run.sh`（启动契约）——`vortexctl` 暂以内置默认兜底，但长期应由各仓补齐（计入迁移指引）。
-- build 时拉私有仓需 git 凭据：由 `build-release.sh` 在**宿主机**用你现有 SSH/凭据浅克隆，再 COPY 进镜像，**不把凭据烙进镜像**。
+- 拉私有仓需 git 凭据：由 `pull-code.sh` 在**宿主机**用你现有 SSH/凭据克隆到 `deploy/repos/`，再由 build 选取代码，**凭据与各仓 `.env` 都不进镜像**。
 - 镜像变大（含全部服务代码，但依赖已在 base 共享层）——对单机部署可接受。
 - 非 root + bind-mount 在 Linux 可能 uid 错配：默认用**命名卷**规避；需 bind-mount 开发时用文档化的 `PUID`/`user:` 覆盖或 root 回退。
 
@@ -127,8 +129,9 @@ common 提供统一启动器 `vortexctl <svc>`（前台跑单个服务），各�
 
 ## 发布流程 vs 调试流程（两条独立路径）
 
-**发布（可复现）**：改 `versions.yml` 某仓 tag → 提交 → `deploy/build-release.sh` 按 tag 从 git
-克隆各仓 → 组合镜像 `vortex:<tag>`。版本由 git tag 钉死、各仓 ref 烙进镜像 label。
+**发布（可复现）**：改 `versions.yml` 某仓 tag → 提交 → `deploy/pull-code.sh` 按 tag 拉各仓到
+`repos/` → 填各仓 `.env` → `deploy/build-release.sh` 用 `repos/` 造组合镜像 `vortex:<tag>`。
+版本由 git tag 钉死、各仓 ref 烙进镜像 label；各仓 `.env`（配置）不进镜像，运行时由 compose 注入。
 
 **调试（本地、不走 git、不切路径）**：在你正改的那个仓里，一条 `docker compose up -d --build`——
 compose 用该仓自己的 `Dockerfile` 构建本地工作区代码（含未提交改动）并跑起来自测，不提交、不打 tag。
