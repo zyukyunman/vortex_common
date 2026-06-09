@@ -91,6 +91,10 @@ TAGS=( -t "${REGISTRY:+${REGISTRY}/}${IMAGE}" )
 [ -n "$EXTRA_TAG" ] && TAGS+=( -t "${REGISTRY:+${REGISTRY}/}${IMAGE%%:*}:${EXTRA_TAG}" )
 
 echo ">> 各仓版本（镜像 label）："; printf "%b" "$SUMMARY"
+
+# 烤入用的配置 env：从 common config/ 拷进构建上下文（deploy/），供 Dockerfile COPY。
+cp ../config/vortex.generated.env ./vortex.generated.env
+
 echo ">> 构建 ${IMAGE}（FROM ${BASE_IMAGE}）"
 docker build $NO_CACHE "${BUILD_ARGS[@]}" -f Dockerfile "${TAGS[@]}" .
 

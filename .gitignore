@@ -17,3 +17,6 @@ venv/
 # 组合部署：pull-code 把各仓拉到 deploy/repos/（含各仓 .env），构建暂存到 deploy/.stage/——都不入库
 deploy/repos/
 deploy/.stage/
+
+# 构建期从 config/ 拷进 deploy/ 的生成 env（build-release 产物，非真值源）
+deploy/vortex.generated.env

@@ -24,23 +24,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # 1) 各服务源码（build-release.sh 已 clone 到 pinned tag）。trader 预留时为占位空目录。
-COPY .stage/vortex_data     /app/services/vortex_data
-COPY .stage/vortex_qmt      /app/services/vortex_qmt
-COPY .stage/vortex_backtest /app/services/vortex_backtest
-COPY .stage/vortex_trader   /app/services/vortex_trader
+COPY .stage/ /app/services/
 
-# 2) 安装各服务（依赖已在 vortex-base，--no-deps 不再解析）。
-#    qmt 的 qmt-bridge 子模块零依赖单独装；trader 仅在检出了代码时才装。
+# 2) 安装各服务（依赖已在 vortex-base，--no-deps；--no-build-isolation 避免联网取 build backend）。
 RUN set -eux; \
-    pip install --no-deps --no-build-isolation /app/services/vortex_data; \
-    pip install --no-deps --no-build-isolation /app/services/vortex_qmt; \
+    for d in /app/services/*/; do \
+        if [ -f "$d/pyproject.toml" ]; then pip install --no-deps --no-build-isolation "$d"; fi; \
+    done; \
     if [ -f /app/services/vortex_qmt/external/qmt-bridge/pyproject.toml ]; then \
         pip install --no-deps /app/services/vortex_qmt/external/qmt-bridge; \
-    fi; \
-    pip install --no-deps --no-build-isolation /app/services/vortex_backtest; \
-    if [ -f /app/services/vortex_trader/pyproject.toml ]; then \
-        pip install --no-deps --no-build-isolation /app/services/vortex_trader; \
     fi
+
+# 2b) 烤入配置真值源生成的 env，供容器内 vortexctl source（端口/网络/TZ 与 registry 一致）。
+COPY vortex.generated.env /app/config/vortex.generated.env
 
 # 3) common 统一启动器
 COPY bin/vortexctl /usr/local/bin/vortexctl
@@ -60,8 +56,8 @@ LABEL org.opencontainers.image.title="vortex" \
       vortex.ref.backtest="${VORTEX_BACKTEST_REF}" \
       vortex.ref.trader="${VORTEX_TRADER_REF}"
 
-# 规范内部端口：data 8765 / qmt 8810 / backtest 8767 /（trader 8820 预留）
-EXPOSE 8765 8810 8767
+# 规范内部端口：data 8765 / qmt 8766 / backtest 8767 / trader 8768
+EXPOSE 8765 8766 8767 8768
 
 # 唯一运行形态：一进程一容器。运行时必须指定服务（compose/k8s 的 command: ["vortexctl","<svc>"]）。
 # 不带参数（裸 docker run）时打印用法与已装入服务，引导你选服务或用 compose。
