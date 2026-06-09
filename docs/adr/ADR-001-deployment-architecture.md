@@ -3,7 +3,7 @@
 **状态：** Proposed（待你拍板转 Accepted）
 **日期：** 2026-06-07
 **决策人：** @zyukyunman（owner）
-**相关：** [docs/migration/](../migration/README.md)（各仓库切到 vortex-base 的迁移）
+**相关：** [docs/migration/](../migration/README.md)（各仓库切到 vortex-base 的迁移）、ADR-003（统一配置架构，端口表与配置真值源以其为准）
 
 ## 背景（Context）
 

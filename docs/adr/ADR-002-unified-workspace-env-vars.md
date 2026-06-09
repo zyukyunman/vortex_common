@@ -3,7 +3,7 @@
 **状态：** Accepted
 **日期：** 2026-06-07
 **决策人：** @zyukyunman（owner）
-**相关：** ADR-001（部署架构）、vortex_data/CLAUDE.md §配置分四层
+**相关：** ADR-001（部署架构）、vortex_data/CLAUDE.md §配置分四层、ADR-003（统一配置架构，端口表与配置真值源以其为准）
 
 ---
 
