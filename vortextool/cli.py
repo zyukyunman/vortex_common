@@ -100,9 +100,54 @@ def _run_compose(action: str, svc: str | None, dry: bool) -> int:
     return subprocess.run(argv, cwd=str(cwd), env=compose_env()).returncode
 
 
+SCRIPTS_DIR = REPO / "scripts"
+
+_IMAGE_SCRIPTS = {
+    "base":  (SCRIPTS_DIR / "build-base-image.sh", []),
+    "pull":  (DEPLOY_DIR / "pull-code.sh", []),
+    "build": (DEPLOY_DIR / "build-release.sh", []),
+    "push":  (DEPLOY_DIR / "build-release.sh", ["--push"]),
+}
+
+
+def build_image_argv(action: str, extra: list[str]) -> list[str]:
+    script, fixed = _IMAGE_SCRIPTS[action]
+    return [str(script), *fixed, *extra]
+
+
+def _run_image(action: str, extra: list[str], dry: bool) -> int:
+    argv = build_image_argv(action, extra)
+    if dry:
+        print(" ".join(argv))
+        return 0
+    return subprocess.run(argv).returncode
+
+
+def _image_cli(rest: list[str]) -> int:
+    """image 组为纯透传：手动解析以绕开 argparse.REMAINDER 无法捕获前导 -- 选项的限制。
+
+    用法：vortex image <base|pull|build|push> [--dry-run] [透传脚本的参数...]
+    （--dry-run 必须紧跟动作之后；其余 token 原样透传给底层脚本。）
+    """
+    if not rest or rest[0] not in _IMAGE_SCRIPTS:
+        valid = "|".join(_IMAGE_SCRIPTS)
+        print(f"用法: vortex image <{valid}> [--dry-run] [透传脚本的参数...]", file=sys.stderr)
+        return 2
+    action, extra = rest[0], list(rest[1:])
+    dry = False
+    if extra and extra[0] == "--dry-run":
+        dry = True
+        extra = extra[1:]
+    return _run_image(action, extra, dry)
+
+
 def main(argv: list[str] | None = None) -> int:
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if raw and raw[0] == "image":
+        return _image_cli(raw[1:])
     parser = argparse.ArgumentParser(prog="vortex")
     sub = parser.add_subparsers(dest="group", required=True)
+    sub.add_parser("image", help="镜像组（base/pull/build/push，透传脚本参数）")
     cfg = sub.add_parser("cfg", help="配置组")
     cfg_sub = cfg.add_subparsers(dest="action", required=True)
     cfg_sub.add_parser("gen").set_defaults(func=_gen)
@@ -117,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--dry-run", action="store_true")
     dep = run_sub.add_parser("deploy")
     dep.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw)
     try:
         if args.group == "run":
             return _run_compose(args.action, getattr(args, "svc", None), args.dry_run)
