@@ -56,7 +56,7 @@ LABEL org.opencontainers.image.title="vortex" \
       vortex.ref.backtest="${VORTEX_BACKTEST_REF}" \
       vortex.ref.trader="${VORTEX_TRADER_REF}"
 
-# 规范内部端口：data 8765 / qmt 8766 / backtest 8767 / trader 8768
+# 规范内部端口：data 8765 / backtest 8766 / qmt 8767 / trader 8768
 EXPOSE 8765 8766 8767 8768
 
 # 唯一运行形态：一进程一容器。运行时必须指定服务（compose/k8s 的 command: ["vortexctl","<svc>"]）。
