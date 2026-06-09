@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# vortex —— 宿主机配置/镜像/运行总入口（区别于容器内 vortexctl）。
+# 本阶段实现 cfg 组（gen/check/list/ports）。image/run 为后续 Phase。
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")/.." && pwd)"   # vortex_common 仓根
+exec uv --project "$HERE" run python -m vortextool.cli "$@"
