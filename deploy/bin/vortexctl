@@ -15,6 +15,10 @@
 # ============================================================================
 set -euo pipefail
 
+# 端口/网络/TZ 默认来自配置真值源生成的 env（烤入镜像 /app/config/）。VORTEX_GENERATED_ENV 可覆盖（测试用）。
+GENERATED_ENV="${VORTEX_GENERATED_ENV:-/app/config/vortex.generated.env}"
+[ -f "$GENERATED_ENV" ] && { set -a; . "$GENERATED_ENV"; set +a; }
+
 # ---- 统一环境默认值（compose / docker run 可逐项覆盖）----
 export VORTEX_WORKSPACE="${VORTEX_WORKSPACE:-/workspace}"
 export VORTEX_STATE="${VORTEX_STATE:-/state}"
@@ -23,16 +27,13 @@ export VORTEX_DATA_HOST="${VORTEX_DATA_HOST:-0.0.0.0}"
 export VORTEX_DATA_PORT="${VORTEX_DATA_PORT:-8765}"
 
 export VORTEX_QMT_HOST="${VORTEX_QMT_HOST:-0.0.0.0}"
-export VORTEX_QMT_PORT="${VORTEX_QMT_PORT:-8810}"
-export VORTEX_QMT_STATE_DIR="${VORTEX_QMT_STATE_DIR:-${VORTEX_STATE}}"
+export VORTEX_QMT_PORT="${VORTEX_QMT_PORT:-8767}"
 
 export VORTEX_BACKTEST_HOST="${VORTEX_BACKTEST_HOST:-0.0.0.0}"
-export VORTEX_BACKTEST_PORT="${VORTEX_BACKTEST_PORT:-8767}"   # 规范端口：避开 data 的 8765
-export VORTEX_BACKTEST_STATE_DIR="${VORTEX_BACKTEST_STATE_DIR:-${VORTEX_STATE}}"
-export VORTEX_DATA_WORKSPACE="${VORTEX_DATA_WORKSPACE:-${VORTEX_WORKSPACE}}"
+export VORTEX_BACKTEST_PORT="${VORTEX_BACKTEST_PORT:-8766}"   # 规范端口：避开 data 的 8765
 
 export VORTEX_TRADER_HOST="${VORTEX_TRADER_HOST:-0.0.0.0}"
-export VORTEX_TRADER_PORT="${VORTEX_TRADER_PORT:-8820}"
+export VORTEX_TRADER_PORT="${VORTEX_TRADER_PORT:-8768}"
 
 SERVICES_DIR="${VORTEX_SERVICES_DIR:-/app/services}"
 svc_dir() { echo "${SERVICES_DIR}/vortex_$1"; }
@@ -52,10 +53,10 @@ builtin_start() {
       exec vortex-data --root "${VORTEX_WORKSPACE}" server start \
         --host "${VORTEX_DATA_HOST}" --port "${VORTEX_DATA_PORT}" ;;
     qmt)
-      mkdir -p "${VORTEX_QMT_STATE_DIR}"
+      mkdir -p "${VORTEX_STATE}"
       exec vortex-qmt serve ;;
     backtest)
-      mkdir -p "${VORTEX_BACKTEST_STATE_DIR}"
+      mkdir -p "${VORTEX_STATE}"
       exec vortex-backtest serve ;;
     trader)
       if command -v vortex-trader >/dev/null 2>&1; then exec vortex-trader serve; fi
@@ -99,5 +100,9 @@ main() {
     *) echo "vortexctl: 未知命令 '${cmd}'（list|data|qmt|backtest|trader）" >&2; exit 2 ;;
   esac
 }
+
+if [ "${VORTEX_DEBUG_PORTS:-}" = "1" ]; then
+  echo "VORTEX_DATA_PORT=${VORTEX_DATA_PORT} VORTEX_QMT_PORT=${VORTEX_QMT_PORT} VORTEX_BACKTEST_PORT=${VORTEX_BACKTEST_PORT} VORTEX_TRADER_PORT=${VORTEX_TRADER_PORT}"
+fi
 
 main "$@"
