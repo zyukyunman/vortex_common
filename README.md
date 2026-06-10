@@ -1,6 +1,18 @@
 # vortex_common
 
-Vortex 各服务的**公共底座**：统一的 Docker 基础镜像、通用脚本。
+Vortex 各服务的**公共底座**：统一 Docker 基础镜像 `vortex-base`、**配置单一真值源 [`config/registry.yml`](config/registry.yml)**、`vortex` 总入口 CLI（cfg/image/run）、部署编排（[`deploy/`](deploy/)）。
+
+## 🧭 系统导航
+
+- **[系统架构总览](docs/architecture/overview.md)** —— 服务/端口、数据流、配置分层、构建发布全景（含架构图）。
+- 配置真值源：[`config/registry.yml`](config/registry.yml)（改它 → `vortex cfg gen` 重生派生物）；[服务总表](docs/reference/services.md) · [系统拓扑](docs/reference/architecture.md)（均由 gen 生成）。
+- 决策记录：[ADR-001 部署架构](docs/adr/ADR-001-deployment-architecture.md) · [ADR-002 workspace/state 变量](docs/adr/ADR-002-unified-workspace-env-vars.md) · [ADR-003 统一配置架构](docs/adr/ADR-003-unified-config-architecture.md)
+- 运行：[部署与运行手册](deploy/CONFIG-AND-RUN.zh.md)。`vortex cfg ports` 看端口 · `vortex run up <svc>` 起单服务 · `vortex run deploy` 起全栈。
+- 各服务仓：**vortex_data**(:8765) · **vortex_backtest**(:8766) · **vortex_qmt**(:8767) · **vortex_trader**(:8768 预留)，各仓 `README.md` + `CLAUDE.md`。
+
+---
+
+> 以下为 `vortex-base` 依赖底座说明（公共底座的一部分）。
 
 各仓库（vortex_data / vortex_qmt / vortex_backtest …）需要的第三方库其实大量重叠
 （pandas / pyarrow / fastapi / pydantic …）。与其每个仓库各维护一套依赖底座，不如
