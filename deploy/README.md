@@ -25,7 +25,7 @@
 ./pull-code.sh                       # 1) 拉各仓到 repos/<svc>（首次从各仓 .env.example 种出 .env）
 # 2) 编辑 repos/<svc>/.env 填 token/凭证（URL 等已预填）
 ./build-release.sh                   # 3) 造组合镜像 vortex:latest（各仓 .env 不进镜像）
-docker compose up -d vortex-data     # 4) 起数据服务；或 docker compose up -d 全栈
+vortex run up data                   # 4) 起数据服务；或 vortex run deploy 全栈
 docker compose ps                    # healthy
 ```
 
@@ -35,12 +35,13 @@ docker compose ps                    # healthy
 
 ## 运行：一进程一容器
 
-每服务一容器，同一镜像、不同 `command`（崩溃隔离、独立重启、对齐 k8s）。规范端口
-data `8765` · qmt `8810` · backtest `8767` · trader `8820`(预留)。默认只绑回环；对外暴露在
-`up` 时用 shell env 覆盖（**先配写 token**）：
+每服务一容器，同一镜像、不同 `command`（崩溃隔离、独立重启、对齐 k8s）。规范端口（内==外、不再重映射，
+以 [`config/registry.yml`](../config/registry.yml) + [ADR-003](../docs/adr/ADR-003-unified-config-architecture.md) 为准）：
+data `8765` · backtest `8766` · qmt `8767` · trader `8768`(预留)。默认只绑回环；对外暴露在
+`vortex run` 时用 shell env 放开绑定地址（**先配写 token**）：
 
 ```bash
-VORTEX_DATA_BIND_ADDR=0.0.0.0 VORTEX_DATA_PUBLIC_PORT=8876 docker compose up -d vortex-data
+VORTEX_DATA_BIND_ADDR=0.0.0.0 vortex run deploy
 ```
 
 ## 本地调试（不走发版流程）

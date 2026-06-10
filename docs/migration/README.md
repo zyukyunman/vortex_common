@@ -1,5 +1,7 @@
 # Vortex 服务仓接入统一镜像 —— 通用迁移指南
 
+> ⚠️ 本指南为 vortex-base 迁移期（ADR-001）历史文档。配置/端口/CLI 以 [ADR-003](../adr/ADR-003-unified-config-architecture.md) + config/registry.yml 为准。
+
 面向每个服务仓（`vortex_data` / `vortex_qmt` / `vortex_backtest`，以及将来的 `vortex_trader`）。
 各仓在自己的 session 里照这一份指南做调整即可——**通用步骤**对所有仓一致，少量**各仓差异**集中在 §3。
 
@@ -63,10 +65,11 @@ CMD ["vortex-<svc>", "serve"]      # 或本仓原有启动命令
 | 仓 | 原 FROM | 需删除 | 端口 | 备注 |
 |----|---------|--------|------|------|
 | **vortex_data** | `vortex-data-base:latest` | `Dockerfile.base`、`requirements-base.txt`、`scripts/build-image.sh`（整段建底座逻辑都不要了） | 8765 | qlib 导出特性（自包含 .bin）本就不依赖 pyqlib，与迁移无关 |
-| **vortex_qmt** | `vortex-data-base:latest` | `requirements-extra.txt` + Dockerfile 里装它那步、`scripts/build-image.sh`（fastapi/uvicorn/pydantic 已在 base） | 8810 | qmt-bridge 子模块仍单独 `pip install --no-deps external/qmt-bridge`，**不进 base** |
-| **vortex_backtest** | `python:3.12-slim` | `apt-get build-essential`；`Dockerfile.qlib`、`Dockerfile.spike`、`scripts/build-qlib-image.sh`、`scripts/build-image.sh`；`pyproject.toml` 的 `pyqlib`(spike extra) | 8767（规范，避开 data 的 8765） | 引擎去 qlib 是本仓代码工作；backtrader 见 §7 |
+| **vortex_qmt** | `vortex-data-base:latest` | `requirements-extra.txt` + Dockerfile 里装它那步、`scripts/build-image.sh`（fastapi/uvicorn/pydantic 已在 base） | 8767 | qmt-bridge 子模块仍单独 `pip install --no-deps external/qmt-bridge`，**不进 base** |
+| **vortex_backtest** | `python:3.12-slim` | `apt-get build-essential`；`Dockerfile.qlib`、`Dockerfile.spike`、`scripts/build-qlib-image.sh`、`scripts/build-image.sh`；`pyproject.toml` 的 `pyqlib`(spike extra) | 8766（规范，避开 data 的 8765） | 引擎去 qlib 是本仓代码工作；backtrader 见 §7 |
 
-> backtest 注意：组合部署里端口规范为 **8767**，由部署侧 `VORTEX_BACKTEST_PORT` 注入（不改代码默认值也行）。
+> 端口以 [ADR-003](../adr/ADR-003-unified-config-architecture.md) + config/registry.yml 为准（内==外、不再重映射）：data 8765 / backtest 8766 / qmt 8767 / trader 8768。
+> backtest 注意：组合部署里端口规范为 **8766**，由部署侧 `VORTEX_BACKTEST_PORT` 注入（不改代码默认值也行）。
 
 ## 4. 启动契约 `deploy/run.sh`
 
@@ -87,7 +90,7 @@ exec vortex-data --root "$ROOT" server start --host "${VORTEX_DATA_HOST:-0.0.0.0
 # vortex_qmt
 #!/usr/bin/env bash
 set -euo pipefail
-export VORTEX_QMT_STATE_DIR="${VORTEX_QMT_STATE_DIR:-/state}"; mkdir -p "$VORTEX_QMT_STATE_DIR"
+export VORTEX_STATE="${VORTEX_STATE:-/state}"; mkdir -p "$VORTEX_STATE"
 exec vortex-qmt serve
 ```
 
@@ -95,8 +98,8 @@ exec vortex-qmt serve
 # vortex_backtest
 #!/usr/bin/env bash
 set -euo pipefail
-export VORTEX_BACKTEST_STATE_DIR="${VORTEX_BACKTEST_STATE_DIR:-/state}"
-export VORTEX_DATA_WORKSPACE="${VORTEX_DATA_WORKSPACE:-/workspace}"; mkdir -p "$VORTEX_BACKTEST_STATE_DIR"
+export VORTEX_STATE="${VORTEX_STATE:-/state}"
+export VORTEX_WORKSPACE="${VORTEX_WORKSPACE:-/workspace}"; mkdir -p "$VORTEX_STATE"
 exec vortex-backtest serve
 ```
 

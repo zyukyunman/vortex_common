@@ -19,7 +19,7 @@ Vortex 由多个独立 git 仓库组成：基础设施 `vortex_common`，以及�
 
 **约束与现状（影响方案的关键事实）：**
 - 服务异构：`vortex-data` 启动是 `vortex-data --root <ws> init && server start`；qmt/backtest 是 `vortex-<svc> serve`——**启动方式不统一**，不宜由 common 硬编码。
-- 端口冲突：data 与 backtest 默认都用 `8765`；qmt 用 `8810`。
+- 端口冲突：data 与 backtest 默认都用 `8765`；qmt 用 `8767`（规范端口以 ADR-003 + config/registry.yml 为准：data 8765 / backtest 8766 / qmt 8767 / trader 8768）。
 - 资源/生命周期差异大：data 稳态 I/O 常驻；backtest 突发计算（重 CPU）；qmt 是**实盘交易**、带风控门禁、需接 Windows 主机，最需要隔离与独立重启。
 - 数据流：data 写 workspace → backtest 只读消费 workspace；qmt、backtest 各有 state。
 - 部署规模：单机为主（owner 自用/小团队），qlib 已出局 → 镜像跨架构（amd64/arm64 通用）。
@@ -118,7 +118,7 @@ common 提供统一启动器 `vortexctl <svc>`（前台跑单个服务），各�
 - qmt 实盘获得独立重启/资源/日志，安全性与可运维性提升。
 
 **更难 / 需注意：**
-- 端口冲突必须解决：**规范内部端口** data `8765`、qmt `8810`、backtest `8767`（部署期 env 覆盖其默认 8765）、trader `8820`(预留)。
+- 端口冲突必须解决：**规范端口** data `8765`、backtest `8766`（部署期 env 覆盖其默认 8765）、qmt `8767`、trader `8768`(预留)（内==外、不再重映射；以 ADR-003 + config/registry.yml 为准）。
 - 各仓需新增 `deploy/run.sh`（启动契约）——`vortexctl` 暂以内置默认兜底，但长期应由各仓补齐（计入迁移指引）。
 - 拉私有仓需 git 凭据：由 `pull-code.sh` 在**宿主机**用你现有 SSH/凭据克隆到 `deploy/repos/`，再由 build 选取代码，**凭据与各仓 `.env` 都不进镜像**。
 - 镜像变大（含全部服务代码，但依赖已在 base 共享层）——对单机部署可接受。
@@ -143,7 +143,7 @@ compose 用该仓自己的 `Dockerfile` 构建本地工作区代码（含未提�
 
 ## 端口 / 卷 / 启动契约（落地规范）
 
-**规范端口（容器内）：** data `8765`、qmt `8810`、backtest `8767`、trader `8820`(预留)。
+**规范端口（内==外、不再重映射；以 ADR-003 + config/registry.yml 为准）：** data `8765`、backtest `8766`、qmt `8767`、trader `8768`(预留)。
 **命名卷：** `vortex-workspace`（data 读写 → backtest 只读）、`vortex-qmt-state`、`vortex-backtest-state`。
 **启动契约：** 各仓提供 `deploy/run.sh`（读统一 env：`VORTEX_<SVC>_HOST/PORT`、`VORTEX_WORKSPACE`、`VORTEX_STATE`，前台 exec 自身服务）。
 `vortexctl <svc>` 优先调用该脚本；不存在时回退内置默认命令。一进程一容器，无「单容器跑全部」模式。
