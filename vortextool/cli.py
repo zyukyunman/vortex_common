@@ -91,12 +91,24 @@ def build_compose_argv(action: str, svc: str | None, *, dry: bool = False) -> li
     raise ValueError(f"未知 run 动作: {action}")
 
 
+def seed_env_if_missing(env_path: Path, example_path: Path) -> bool:
+    """dev: <repo>/.env 缺失但有 .env.example 时自动种一份（像 pull-code）。返回是否种了。"""
+    if env_path.exists() or not example_path.exists():
+        return False
+    env_path.write_text(example_path.read_text(encoding="utf-8"), encoding="utf-8")
+    return True
+
+
 def _run_compose(action: str, svc: str | None, dry: bool) -> int:
     argv = build_compose_argv(action, svc, dry=dry)
     cwd = DEPLOY_DIR if action == "deploy" else (PARENT / f"vortex_{svc}")
     if dry:
         print(f"(cwd={cwd}) " + " ".join(argv))
         return 0
+    if action != "deploy" and svc:
+        repo = PARENT / f"vortex_{svc}"
+        if seed_env_if_missing(repo / ".env", repo / ".env.example"):
+            print(f"  种出 {repo / '.env'}（原缺失 → 从 .env.example 拷贝；记得填密钥）")
     return subprocess.run(argv, cwd=str(cwd), env=compose_env()).returncode
 
 

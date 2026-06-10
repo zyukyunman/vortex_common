@@ -28,3 +28,26 @@ def test_run_up_resolves_host_root_abs(monkeypatch):
     assert env["VORTEX_WORKSPACE_HOST_ROOT"] == "/home/tester/vortex/workspace"
     assert env["VORTEX_STATE_HOST_ROOT"] == "/home/tester/vortex/state"
     assert "~" not in env["VORTEX_WORKSPACE_HOST_ROOT"]
+
+
+def test_seed_env_if_missing_creates_from_example(tmp_path):
+    ex = tmp_path / ".env.example"
+    ex.write_text("VORTEX_X_TOKEN=\n", encoding="utf-8")
+    env = tmp_path / ".env"
+    assert cli.seed_env_if_missing(env, ex) is True
+    assert env.read_text(encoding="utf-8") == "VORTEX_X_TOKEN=\n"
+
+
+def test_seed_env_noop_when_env_exists(tmp_path):
+    ex = tmp_path / ".env.example"
+    ex.write_text("A=1\n", encoding="utf-8")
+    env = tmp_path / ".env"
+    env.write_text("B=2\n", encoding="utf-8")
+    assert cli.seed_env_if_missing(env, ex) is False
+    assert env.read_text(encoding="utf-8") == "B=2\n"
+
+
+def test_seed_env_noop_when_no_example(tmp_path):
+    env = tmp_path / ".env"
+    assert cli.seed_env_if_missing(env, tmp_path / ".env.example") is False
+    assert not env.exists()
