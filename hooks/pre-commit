@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Vortex 配置防漂移 pre-commit 钩子：提交前跑 `vortex cfg check`
+# （生成物是否最新 + 端口唯一/升序 + 各仓 .env.example 无禁用键 + compose 无 PUBLIC_PORT）。
+#
+# 启用（在 vortex_common 仓根执行一次）：
+#   git config core.hooksPath hooks
+#
+# 跨仓检查需各服务仓与 vortex_common 平级（dev 环境）；缺失的仓会被跳过。
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # vortex_common 仓根
+exec "$HERE/bin/vortex" cfg check

@@ -1,0 +1,20 @@
+# 配置防漂移 CI：每次 push/PR 跑 vortex cfg check。
+# 注：CI 只 checkout 本仓（vortex_common），兄弟服务仓不在场 → check_repo_configs 的跨仓
+# .env.example/compose 扫描会跳过缺失仓；CI 实际校验「生成物是否最新 + 端口唯一/升序 +
+# registry 合法 + deploy/docker-compose.yml 无 PUBLIC_PORT」。完整跨仓检查由各 dev 机的
+# pre-commit 钩子（hooks/pre-commit，git config core.hooksPath hooks）覆盖。
+name: config-check
+on: [push, pull_request]
+jobs:
+  cfg-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync deps
+        run: uv sync --extra dev
+      - name: vortex cfg check（防漂移闸门）
+        run: ./bin/vortex cfg check
+      - name: 单元测试
+        run: uv run pytest -q
