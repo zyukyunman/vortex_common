@@ -34,6 +34,27 @@ def scan_forbidden_keys(env_file: Path) -> list[ForbiddenHit]:
     return hits
 
 
+def check_repo_configs(parent: Path, service_names: list[str],
+                       extra_composes: list[Path] | None = None) -> list[str]:
+    """扫各服务仓 .env.example(禁用键) + compose(无 PUBLIC_PORT)。缺失文件跳过（CI/隔离环境友好）。"""
+    problems: list[str] = []
+    composes = list(extra_composes or [])
+    for name in service_names:
+        repo = Path(parent) / name
+        example = repo / ".env.example"
+        if example.exists():
+            for hit in scan_forbidden_keys(example):
+                problems.append(
+                    f"{example} 含禁用键 {hit.key}（端口/路径/TZ/绑定归 common）: {hit.line}"
+                )
+        composes.append(repo / "docker-compose.yml")
+    for compose in composes:
+        compose = Path(compose)
+        if compose.exists() and "PUBLIC_PORT" in compose.read_text(encoding="utf-8"):
+            problems.append(f"{compose} 含 PUBLIC_PORT（应删，端口由 registry 单源、内外一致）")
+    return problems
+
+
 def check_generated_fresh(reg: Registry, *, env_path: Path, versions_path: Path,
                           services_path: Path, architecture_path: Path) -> list[str]:
     problems: list[str] = []

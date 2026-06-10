@@ -1,6 +1,6 @@
 from pathlib import Path
 from vortextool.registry import load_registry
-from vortextool.check import check_generated_fresh, scan_forbidden_keys
+from vortextool.check import check_generated_fresh, scan_forbidden_keys, check_repo_configs
 from vortextool.generate import (
     render_env, render_versions, render_services_md, render_architecture_md,
 )
@@ -63,3 +63,32 @@ def test_comment_lines_not_flagged(tmp_path):
     f = tmp_path / ".env.example"
     f.write_text("# VORTEX_DATA_PORT=8765\n   # TZ=X\n", encoding="utf-8")
     assert scan_forbidden_keys(f) == []
+
+
+def test_check_repo_configs_clean(tmp_path):
+    repo = tmp_path / "vortex_x"
+    repo.mkdir()
+    (repo / ".env.example").write_text("VORTEX_X_TOKEN=\n", encoding="utf-8")
+    (repo / "docker-compose.yml").write_text('    ports:\n      - "${A_BIND}:${B_PORT}:${B_PORT}"\n', encoding="utf-8")
+    assert check_repo_configs(tmp_path, ["vortex_x"]) == []
+
+
+def test_check_repo_configs_flags_forbidden_env_and_public_port(tmp_path):
+    repo = tmp_path / "vortex_x"
+    repo.mkdir()
+    (repo / ".env.example").write_text("VORTEX_X_PORT=8765\n", encoding="utf-8")
+    (repo / "docker-compose.yml").write_text('      - "${A}:${VORTEX_X_PUBLIC_PORT}:${B}"\n', encoding="utf-8")
+    problems = check_repo_configs(tmp_path, ["vortex_x"])
+    assert any("VORTEX_X_PORT" in p for p in problems)
+    assert any("PUBLIC_PORT" in p for p in problems)
+
+
+def test_check_repo_configs_skips_missing(tmp_path):
+    assert check_repo_configs(tmp_path, ["vortex_nonexist"]) == []
+
+
+def test_check_repo_configs_extra_composes(tmp_path):
+    bad = tmp_path / "deploy-compose.yml"
+    bad.write_text('      - "${A}:${VORTEX_DATA_PUBLIC_PORT:-8765}:8765"\n', encoding="utf-8")
+    problems = check_repo_configs(tmp_path, [], extra_composes=[bad])
+    assert any("PUBLIC_PORT" in p for p in problems)

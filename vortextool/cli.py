@@ -11,7 +11,7 @@ from .registry import load_registry, RegistryError
 from .generate import (
     render_env, render_versions, render_services_md, render_architecture_md,
 )
-from .check import check_generated_fresh  # scan_forbidden_keys 在后续 Phase 接入
+from .check import check_generated_fresh, check_repo_configs
 
 REPO = Path(__file__).resolve().parent.parent
 REG_PATH = REPO / "config" / "registry.yml"
@@ -44,7 +44,11 @@ def _check() -> int:
         reg, env_path=ENV_PATH, versions_path=VERSIONS_PATH,
         services_path=SERVICES_PATH, architecture_path=ARCH_PATH,
     )
-    # 注：各仓 .env.example 禁用键扫描在后续 Phase（清理那些文件后）接入。
+    problems += check_repo_configs(
+        REPO.parent,
+        [s.name for s in reg.services],
+        extra_composes=[DEPLOY_DIR / "docker-compose.yml"],
+    )
     if problems:
         print("✗ check 失败：", file=sys.stderr)
         for p in problems:
